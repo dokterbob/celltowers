@@ -1,0 +1,70 @@
+LOAD CSV
+  FROM stdin
+    WITH ENCODING latin1
+    HAVING FIELDS (
+      radio,
+      mcc,
+      net,
+      area,
+      cell,
+      unit,
+      lon,
+      lat,
+      range,
+      samples,
+      changeable,
+      created,
+      updated,
+      averageSignal
+    )
+
+  INTO postgresql:///celltowers?mls
+    TARGET COLUMNS (
+      radio,
+      mcc,
+      net,
+      area,
+      cell,
+      unit,
+      lon,
+      lat,
+      range,
+      samples,
+      changeable,
+      created TIMESTAMP using (unix-timestamp-to-timestamptz created),
+      updated TIMESTAMP using (unix-timestamp-to-timestamptz updated),
+      averageSignal
+    )
+
+  WITH
+    csv header,
+    fields terminated by ','
+
+  BEFORE LOAD DO
+    $$ CREATE EXTENSION IF NOT EXISTS postgis; $$,
+    $$ CREATE EXTENSION IF NOT EXISTS postgis_topology; $$,
+    $$ DROP TABLE IF EXISTS mls; $$,
+    $$ CREATE TABLE mls (
+        radio VARCHAR,
+        mcc INT,
+        net INT,
+        area INT,
+        cell INT NOT NULL,
+        unit INT,
+        lon NUMERIC NOT NULL,
+        lat NUMERIC NOT NULL,
+        range NUMERIC,
+        samples INT,
+        changeable BOOLEAN,
+        created TIMESTAMP,
+        updated TIMESTAMP,
+        averageSignal INT
+      );
+    $$
+
+  AFTER LOAD DO
+    $$ ALTER TABLE mls ADD PRIMARY KEY (cell); $$,
+    $$ ALTER TABLE mls ADD COLUMN geom geometry(POINT, 4326); $$,
+    $$ UPDATE mls SET geom = ST_SetSRID(ST_MakePoint(lon, lat), 4326); $$,
+    $$ CREATE INDEX idx_mls ON mls USING GIST ( geom ); $$
+;
